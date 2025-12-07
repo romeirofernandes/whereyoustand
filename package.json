@@ -1,0 +1,8 @@
+{
+  "type": "module",
+  "dependencies": {
+    "crypto": "^1.0.1",
+    "fs": "^0.0.1-security",
+    "nodemailer": "^7.0.11"
+  }
+}
