@@ -1,6 +1,5 @@
 import * as cheerio from 'cheerio';
 
-// --- encryption helpers ---
 function bytesToBase64(bytes) {
   let binary = '';
   const len = bytes.length;

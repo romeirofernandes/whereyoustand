@@ -38,7 +38,7 @@ jobs:
         if: ${{ steps.check_night.outputs.skip != 'true' }}
         run: |
           declare -A emails
-          for i in {0..1}; do
+          for i in {0..67}; do
             echo "Scraping offset $i"
             resp=$(curl -s -X POST "https://whereyoustand-worker.theromeirofernandes.workers.dev/api/scrape/one?offset=$i")
             prn=$(echo "$resp" | jq -r '.prn // empty')
