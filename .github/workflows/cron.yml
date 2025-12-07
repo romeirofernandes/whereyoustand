@@ -1,0 +1,92 @@
+name: Scraper Cron
+
+on:
+  schedule:
+    - cron: "*/600000 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Print UTC time
+        run: date -u
+
+      # Check IST and set output 'skip' to "true" when inside 00-06 IST
+      - name: Check night window (IST 00–06)
+        id: check_night
+        run: |
+          IST_HOUR=$(TZ='Asia/Kolkata' date +%H)
+          echo "IST_HOUR=$IST_HOUR"
+          if [ "$IST_HOUR" -ge 0 ] && [ "$IST_HOUR" -lt 6 ]; then
+            echo "Inside night window. Will skip scraping steps."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get OLD marks snapshot
+        if: ${{ steps.check_night.outputs.skip != 'true' }}
+        run: |
+          curl -s "https://whereyoustand-worker.theromeirofernandes.workers.dev/api/marks" > old.json
+
+      - name: Scrape all students + capture emails
+        if: ${{ steps.check_night.outputs.skip != 'true' }}
+        run: |
+          declare -A emails
+          for i in {0..67}; do
+            echo "Scraping offset $i"
+            resp=$(curl -s -X POST "https://whereyoustand-worker.theromeirofernandes.workers.dev/api/scrape/one?offset=$i")
+            prn=$(echo "$resp" | jq -r '.prn // empty')
+            email=$(echo "$resp" | jq -r '.email // empty')
+            if [ -n "$email" ] && [ "$email" != "null" ]; then
+              emails[$prn]=$email
+            fi
+            sleep 2
+          done
+
+          # Write PRN→email mapping to file
+          json="{"
+          first=1
+          for prn in "${!emails[@]}"; do
+            if [ $first -eq 0 ]; then json="$json,"; fi
+            first=0
+            json="$json\"$prn\":\"${emails[$prn]}\""
+          done
+          json="$json}"
+          echo "$json" > emailMap.json
+
+      - name: Get NEW marks snapshot
+        if: ${{ steps.check_night.outputs.skip != 'true' }}
+        run: |
+          curl -s "https://whereyoustand-worker.theromeirofernandes.workers.dev/api/marks" > new.json
+
+      - name: Setup Node
+        if: ${{ steps.check_night.outputs.skip != 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install deps
+        if: ${{ steps.check_night.outputs.skip != 'true' }}
+        run: npm install nodemailer
+
+      - name: Compare and Mail
+        if: ${{ steps.check_night.outputs.skip != 'true' }}
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+        run: node processMarks.js
+
+      - name: Night-window info (runs always)
+        run: |
+          echo "Night-window flag: ${{ steps.check_night.outputs.skip }}"
+          if [ "${{ steps.check_night.outputs.skip }}" = "true" ]; then
+            echo "Job skipped due to night window (00:00-06:00 IST)."
+          else
+            echo "Job executed normally."
+          fi
