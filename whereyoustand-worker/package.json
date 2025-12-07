@@ -1,0 +1,20 @@
+{
+	"name": "whereyoustand-worker",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"start": "wrangler dev",
+		"test": "vitest",
+		"setup": "node scripts/setup-students.js > setup-students.sql && wrangler d1 execute whereyoustand --remote --file=setup-students.sql && rm setup-students.sql"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.8.19",
+		"vitest": "~3.2.0",
+		"wrangler": "^3.101.0"
+	},
+	"dependencies": {
+		"cheerio": "^1.1.2"
+	}
+}
