@@ -78,6 +78,7 @@ jobs:
       - name: Compare and Mail
         if: ${{ steps.check_night.outputs.skip != 'true' }}
         env:
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
         run: node processMarks.js
