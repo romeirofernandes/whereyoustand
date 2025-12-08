@@ -2,31 +2,48 @@ import React from 'react';
 
 const AUTH_COOKIE = 'whereyoustand_token';
 
-function getCookie(name) {
-  return document.cookie
-    .split('; ')
-    .find(row => row.startsWith(name + '='))
-    ?.split('=')[1];
+export function getAuthToken() {
+  const cookies = document.cookie.split(';');
+  const authCookie = cookies.find(c => c.trim().startsWith(`${AUTH_COOKIE}=`));
+  return authCookie ? decodeURIComponent(authCookie.split('=')[1]) : null;
+}
+
+export function getAuthLevel() {
+  const token = getAuthToken();
+  if (!token) return null;
+  
+  try {
+    const payload = JSON.parse(atob(token));
+    return payload.level || 'normal';
+  } catch {
+    return null;
+  }
 }
 
 export function removeCookie(name) {
-  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Strict`;
-}
-
-export function getAuthToken() {
-  const token = getCookie(AUTH_COOKIE);
-  return token ? decodeURIComponent(token) : null;
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
 }
 
 export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
+  const [authLevel, setAuthLevel] = React.useState(null);
 
   React.useEffect(() => {
     const token = getAuthToken();
     if (token) {
-      setIsAuthenticated(true);
+      try {
+        const payload = JSON.parse(atob(token));
+        if (payload.exp > Math.floor(Date.now() / 1000)) {
+          setIsAuthenticated(true);
+          setAuthLevel(payload.level || 'normal');
+        } else {
+          removeCookie(AUTH_COOKIE);
+        }
+      } catch {
+        removeCookie(AUTH_COOKIE);
+      }
     }
   }, []);
 
-  return { isAuthenticated, setIsAuthenticated };
+  return { isAuthenticated, setIsAuthenticated, authLevel, setAuthLevel };
 }

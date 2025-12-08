@@ -37,7 +37,13 @@ export function PasswordGate({ onSuccess }) {
 
       if (response.ok && data.token) {
         setCookie(AUTH_COOKIE, data.token, AUTH_EXPIRY_DAYS);
-        onSuccess();
+        
+        try {
+          const payload = JSON.parse(atob(data.token));
+          onSuccess(payload.level || 'normal');
+        } catch {
+          onSuccess('normal');
+        }
       } else {
         setError(data.error || 'Invalid password');
         setPassword('');

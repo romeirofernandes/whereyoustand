@@ -58,17 +58,41 @@ function getSubjectName(code) {
 function verifyToken(request, env) {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return false;
+    return null;
   }
-  const token = authHeader.slice(7);
-  return token === env.AUTH_TOKEN;
+
+  try {
+    const token = authHeader.substring(7);
+    const payload = JSON.parse(atob(token));
+    
+    if (payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+    
+    return payload.level || 'normal';
+  } catch {
+    return null;
+  }
 }
 
 async function generateToken(password, env) {
-  if (password !== env.PASSWORD) {
-    return null;
+  if (password === env.PASSWORD) {
+    const payload = { 
+      exp: Math.floor(Date.now() / 1000) + (2 * 24 * 60 * 60),
+      level: 'normal'
+    };
+    return btoa(JSON.stringify(payload));
   }
-  return env.AUTH_TOKEN;
+  
+  if (password === env.SECRET_PASSWORD) {
+    const payload = { 
+      exp: Math.floor(Date.now() / 1000) + (2 * 24 * 60 * 60),
+      level: 'admin'
+    };
+    return btoa(JSON.stringify(payload));
+  }
+  
+  return null;
 }
 
 function corsHeaders() {
@@ -324,17 +348,43 @@ export default {
       }
       
       if (url.pathname === '/api/marks' && request.method === 'GET') {
-        // if (!verifyToken(request, env)) {
-        //   return unauthorizedResponse();
-        // }
+        const authLevel = verifyToken(request, env);
+        if (!authLevel) {
+          return unauthorizedResponse();
+        }
 
-        const { results } = await env.DB.prepare(`
+        let query = `
           SELECT s.prn, s.name, m.subject, m.exam_type, m.marks, s.updated_at
           FROM marks m
           JOIN students s ON m.prn = s.prn
           ORDER BY s.name, m.subject, m.exam_type
-        `).all();
+        `;
 
+        // Filter hidden students for normal users
+        if (authLevel === 'normal') {
+          const hiddenPRNs = [
+          ];
+          const placeholders = hiddenPRNs.map(() => '?').join(',');
+          query = `
+            SELECT s.prn, s.name, m.subject, m.exam_type, m.marks, s.updated_at
+            FROM marks m
+            JOIN students s ON m.prn = s.prn
+            WHERE s.prn NOT IN (${placeholders})
+            ORDER BY s.name, m.subject, m.exam_type
+          `;
+          const { results } = await env.DB.prepare(query).bind(...hiddenPRNs).all();
+          
+          try {
+            const encrypted = await encryptPayload(results, env.ENCRYPTION_KEY);
+            return jsonResponse({ encrypted: true, payload: encrypted });
+          } catch (err) {
+            console.error('Encryption failed:', err);
+            return jsonResponse({ error: 'Encryption failed' }, 500);
+          }
+        }
+
+        // Admin gets all students
+        const { results } = await env.DB.prepare(query).all();
         try {
           const encrypted = await encryptPayload(results, env.ENCRYPTION_KEY);
           return jsonResponse({ encrypted: true, payload: encrypted });
@@ -345,19 +395,41 @@ export default {
       }
 
       if (url.pathname === '/api/students' && request.method === 'GET') {
-        if (!verifyToken(request, env)) {
+        const authLevel = verifyToken(request, env);
+        if (!authLevel) {
           return unauthorizedResponse();
         }
 
-        const { results } = await env.DB.prepare(`
-          SELECT prn, name, updated_at FROM students ORDER BY name
-        `).all();
+        let query = `SELECT prn, name, updated_at FROM students ORDER BY name`;
 
+        // Filter hidden students for normal users
+        if (authLevel === 'normal') {
+          const hiddenPRNs = [
+          ];
+          const placeholders = hiddenPRNs.map(() => '?').join(',');
+          query = `
+            SELECT prn, name, updated_at 
+            FROM students 
+            WHERE prn NOT IN (${placeholders})
+            ORDER BY name
+          `;
+          const { results } = await env.DB.prepare(query).bind(...hiddenPRNs).all();
+          
+          try {
+            const encrypted = await encryptPayload(results, env.ENCRYPTION_KEY);
+            return jsonResponse({ encrypted: true, payload: encrypted });
+          } catch (err) {
+            console.error('Encryption failed for /api/students:', err);
+            return jsonResponse({ error: 'Encryption failed' }, 500);
+          }
+        }
+
+        // Admin gets all students
+        const { results } = await env.DB.prepare(query).all();
         try {
           const encrypted = await encryptPayload(results, env.ENCRYPTION_KEY);
           return jsonResponse({ encrypted: true, payload: encrypted });
-        } 
-        catch (err) {
+        } catch (err) {
           console.error('Encryption failed for /api/students:', err);
           return jsonResponse({ error: 'Encryption failed' }, 500);
         }
