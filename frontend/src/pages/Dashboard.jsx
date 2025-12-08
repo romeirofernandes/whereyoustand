@@ -5,6 +5,7 @@ import { SimpleAccordion } from '../components/SimpleAccordion';
 import { StudentCard } from '../components/StudentCard';
 import { CommandKSearch } from '../components/CommandKSearch';
 import { calculateOverallPointer } from '../utils/pointerCalculations';
+import { SiteFooter } from '@/components/SiteFooter';
 
 export function Dashboard({ 
   studentsWithMarks, 
@@ -159,6 +160,7 @@ export function Dashboard({
           </Card>
         )}
       </main>
+      <SiteFooter />
     </div>
   );
 }

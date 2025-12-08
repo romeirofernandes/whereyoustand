@@ -52,14 +52,14 @@ export function StudentCard({
               </span>
             </div>
           </div>
-          {/* <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <Badge 
               variant="default" 
               className="self-start sm:ml-auto text-xs sm:text-sm shrink-0 bg-primary hover:bg-primary/90 flex items-center gap-1.5"
             >
               <span className="font-medium text-md">{overallPointer}</span>
             </Badge>
-          </div> */}
+          </div>
         </div>
       }
       content={
