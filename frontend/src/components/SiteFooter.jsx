@@ -1,43 +1,56 @@
 import React from "react";
 
 const credits = [
-  {
-    name: "Chris Lopes",
-    role: "Scraper and Pointer Calculator",
-    github: "https://github.com/Chris-Lopes",
-  },
-  {
-    name: "Aliqyaan Mahimwala",
-    role: "Cron Job and Mailer",
-    github: "https://github.com/Hike-12",
-  },
+	{
+		name: "Chris Lopes",
+		role: "Scraper and Pointer Calculator",
+		github: "https://github.com/Chris-Lopes",
+	},
+	{
+		name: "Aliqyaan Mahimwala",
+		role: "Cron Job and Mailer",
+		github: "https://github.com/Hike-12",
+	},
 ];
 
 export function SiteFooter() {
-  return (
-    <footer className="w-full border-t bg-card text-muted-foreground text-sm py-6 px-4 flex flex-col items-center gap-2">
-      <div className="flex flex-col sm:flex-row gap-2 items-center">
-        {credits.map((person, idx) => (
-          <span key={person.name} className="flex items-center gap-1.5">
-            <a
-              href={person.github}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-primary transition-colors flex items-center gap-1"
-              aria-label={`GitHub profile of ${person.name}`}
-            >
-              <GitHubLogo className="w-8 h-8" />
-              <span className="font-medium">{person.name}</span>
-            </a>
-            <span className="opacity-70">– &nbsp;{person.role}</span>
-            {idx < credits.length - 1 && (
-              <span className="mx-2 text-foreground select-none hidden sm:inline">|</span>
-            )}
-          </span>
-        ))}
-      </div>
-    </footer>
-  );
+	return (
+		<footer className="w-full border-t bg-card text-muted-foreground text-sm py-6 px-4 flex flex-col items-center gap-2">
+			<div className="flex flex-col sm:flex-row gap-2 items-center">
+				{credits.map((person, idx) => (
+					<span key={person.name} className="flex items-center gap-1.5">
+						<a
+							href={person.github}
+							target="_blank"
+							rel="noopener noreferrer"
+							className="hover:text-primary transition-colors flex items-center gap-1"
+							aria-label={`GitHub profile of ${person.name}`}
+						>
+							<span className="font-medium">{person.name}</span>
+						</a>
+						<span className="opacity-70">–&nbsp;{person.role}</span>
+						{idx < credits.length - 1 && (
+							<span className="mx-2 text-foreground select-none hidden sm:inline">
+								|
+							</span>
+						)}
+					</span>
+				))}
+        <span className="mx-2 text-foreground select-none hidden sm:inline">
+          |
+        </span>
+				<a
+					href="https://github.com/romeirofernandes/whereyoustand"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="flex items-center gap-1 hover:text-primary transition-colors"
+				>
+					<GitHubLogo className="w-8 h-8" />
+					<span>Star the repo pls</span>
+				</a>
+			</div>
+		</footer>
+	);
 }
 
 function GitHubLogo({ className = "" }) {
