@@ -94,7 +94,7 @@ export function PasswordGate({ onSuccess }) {
                 </button>
               </div>
               {error && (
-                <p className="text-sm text-destructive mt-4 flex items-center gap-2">
+                <p className="text-sm text-red-400 mt-4 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4" />
                   {error}
                 </p>
