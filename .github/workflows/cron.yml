@@ -60,28 +60,28 @@ jobs:
           json="$json}"
           echo "$json" > emailMap.json
 
-      - name: Get NEW marks snapshot
-        if: ${{ steps.check_night.outputs.skip != 'true' }}
-        run: |
-          curl -s "https://whereyoustand-worker.theromeirofernandes.workers.dev/api/marks" > new.json
+      # - name: Get NEW marks snapshot
+      #   if: ${{ steps.check_night.outputs.skip != 'true' }}
+      #   run: |
+      #     curl -s "https://whereyoustand-worker.theromeirofernandes.workers.dev/api/marks" > new.json
 
-      - name: Setup Node
-        if: ${{ steps.check_night.outputs.skip != 'true' }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
+      # - name: Setup Node
+      #   if: ${{ steps.check_night.outputs.skip != 'true' }}
+      #   uses: actions/setup-node@v4
+      #   with:
+      #     node-version: 18
 
-      - name: Install deps
-        if: ${{ steps.check_night.outputs.skip != 'true' }}
-        run: npm install nodemailer
+      # - name: Install deps
+      #   if: ${{ steps.check_night.outputs.skip != 'true' }}
+      #   run: npm install nodemailer
 
-      - name: Compare and Mail
-        if: ${{ steps.check_night.outputs.skip != 'true' }}
-        env:
-          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
-          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
-          GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
-        run: node processMarks.js
+      # - name: Compare and Mail
+      #   if: ${{ steps.check_night.outputs.skip != 'true' }}
+      #   env:
+      #     ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+      #     GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+      #     GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+      #   run: node processMarks.js
 
       - name: Night-window info (runs always)
         run: |
