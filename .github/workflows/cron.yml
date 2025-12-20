@@ -2,7 +2,7 @@ name: Scraper Cron
 
 on:
   schedule:
-    - cron: "*/600000 * * * *"
+    - cron: "0 */3 * * *"
   workflow_dispatch:
 
 jobs:
@@ -29,16 +29,16 @@ jobs:
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Get OLD marks snapshot
-        if: ${{ steps.check_night.outputs.skip != 'true' }}
-        run: |
-          curl -s "https://whereyoustand-worker.theromeirofernandes.workers.dev/api/marks" > old.json
+      # - name: Get OLD marks snapshot
+      #   if: ${{ steps.check_night.outputs.skip != 'true' }}
+      #   run: |
+      #     curl -s "https://whereyoustand-worker.theromeirofernandes.workers.dev/api/marks" > old.json
 
-      - name: Scrape all students + capture emails
+      - name: Scrape all students 
         if: ${{ steps.check_night.outputs.skip != 'true' }}
         run: |
           declare -A emails
-          for i in {0..67}; do
+          for i in {0..138}; do
             echo "Scraping offset $i"
             resp=$(curl -s -X POST "https://whereyoustand-worker.theromeirofernandes.workers.dev/api/scrape/one?offset=$i")
             prn=$(echo "$resp" | jq -r '.prn // empty')
@@ -48,17 +48,6 @@ jobs:
             fi
             sleep 2
           done
-
-          # Write PRN→email mapping to file
-          json="{"
-          first=1
-          for prn in "${!emails[@]}"; do
-            if [ $first -eq 0 ]; then json="$json,"; fi
-            first=0
-            json="$json\"$prn\":\"${emails[$prn]}\""
-          done
-          json="$json}"
-          echo "$json" > emailMap.json
 
       # - name: Get NEW marks snapshot
       #   if: ${{ steps.check_night.outputs.skip != 'true' }}
