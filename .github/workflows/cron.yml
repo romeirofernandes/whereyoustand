@@ -34,20 +34,19 @@ jobs:
       #   run: |
       #     curl -s "https://whereyoustand-worker.theromeirofernandes.workers.dev/api/marks" > old.json
 
-      - name: Scrape all students 
+      - name: Scrape all students
         if: ${{ steps.check_night.outputs.skip != 'true' }}
         run: |
-          declare -A emails
           for i in {0..138}; do
             echo "Scraping offset $i"
             resp=$(curl -s -X POST "https://whereyoustand-worker.theromeirofernandes.workers.dev/api/scrape/one?offset=$i")
             prn=$(echo "$resp" | jq -r '.prn // empty')
             email=$(echo "$resp" | jq -r '.email // empty')
             if [ -n "$email" ] && [ "$email" != "null" ]; then
-              emails[$prn]=$email
+              echo "PRN=$prn EMAIL=$email"
             fi
-            sleep 2
           done
+
 
       # - name: Get NEW marks snapshot
       #   if: ${{ steps.check_night.outputs.skip != 'true' }}
