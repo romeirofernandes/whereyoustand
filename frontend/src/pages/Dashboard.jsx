@@ -23,6 +23,7 @@ export function Dashboard({
   const [isCommandKOpen, setIsCommandKOpen] = React.useState(false);
   const [page, setPage] = React.useState(1);
   const pageSize = 20;
+  const studentRefs = React.useRef({});
 
   // Debounce search so we don't call the API on every keystroke
   const [debouncedSearch, setDebouncedSearch] = React.useState(searchQuery);
@@ -82,6 +83,14 @@ export function Dashboard({
     setSearchQuery(student.name);
     setPage(1);
     setOpenedStudentPrn(student.prn);
+    
+    // Scroll to student after data loads
+    setTimeout(() => {
+      const element = studentRefs.current[student.prn];
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 400);
   };
 
   if (isLoading) {
@@ -102,6 +111,12 @@ export function Dashboard({
         onClose={() => setIsCommandKOpen(false)}
         students={allStudentNames}
         onSelectStudent={handleSelectStudent}
+        currentSearch={searchQuery}
+        onClearSearch={() => {
+          setSearchQuery('');
+          setPage(1);
+          setOpenedStudentPrn(null);
+        }}
       />
 
       <DashboardHeader
@@ -118,24 +133,18 @@ export function Dashboard({
         allSubjects={allSubjects}
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-4 sm:py-0 space-y-4 sm:space-y-8 flex-1 w-full">
-        {/* Page info */}
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          {isFetching && !isLoading && (
-            <span className="text-xs animate-pulse">Updating…</span>
-          )}
-        </div>
-
+      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-4 sm:py-6 space-y-4 sm:space-y-8 flex-1 w-full">
         <SimpleAccordion>
           {pageStudents.map((student, index) => (
-            <StudentCard
-              key={student.prn}
-              student={student}
-              index={(page - 1) * pageSize + index}
-              sortBy={sortBy}
-              isOpen={openedStudentPrn === student.prn}
-              onOpen={() => setOpenedStudentPrn(student.prn)}
-            />
+            <div key={student.prn} ref={(el) => (studentRefs.current[student.prn] = el)}>
+              <StudentCard
+                student={student}
+                index={(page - 1) * pageSize + index}
+                sortBy={sortBy}
+                isOpen={openedStudentPrn === student.prn}
+                onOpen={() => setOpenedStudentPrn(student.prn)}
+              />
+            </div>
           ))}
         </SimpleAccordion>
 
@@ -156,8 +165,8 @@ export function Dashboard({
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
-              <ChevronLeft className="w-4 h-4 mr-1" />
-              Previous
+              <ChevronLeft className="w-4 h-4 sm:mr-1" />
+              <span className="hidden sm:inline">Previous</span>
             </Button>
 
             {/* Page numbers */}
@@ -205,8 +214,8 @@ export function Dashboard({
               disabled={page >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             >
-              Next
-              <ChevronRight className="w-4 h-4 ml-1" />
+              <span className="hidden sm:inline">Next</span>
+              <ChevronRight className="w-4 h-4 sm:ml-1" />
             </Button>
           </div>
         )}

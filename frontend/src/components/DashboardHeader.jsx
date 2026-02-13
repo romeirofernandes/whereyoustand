@@ -81,8 +81,8 @@ export function DashboardHeader({
                 onClick={onCompareClick}
                 className="py-5 whitespace-nowrap"
               >
-                <Users className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Compare</span>
+                <Users className="w-4 h-4" />
+                <span className="sm:inline">Compare</span>
               </Button>
             </div>
           </div>

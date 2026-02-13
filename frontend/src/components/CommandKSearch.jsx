@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Search, X, Keyboard, ArrowUp, ArrowDown } from 'lucide-react';
 
-export function CommandKSearch({ isOpen, onClose, students, onSelectStudent }) {
+export function CommandKSearch({ isOpen, onClose, students, onSelectStudent, currentSearch = '', onClearSearch }) {
   const [query, setQuery] = React.useState('');
   const [selectedIndex, setSelectedIndex] = React.useState(0);
   const inputRef = React.useRef(null);
@@ -13,8 +13,10 @@ export function CommandKSearch({ isOpen, onClose, students, onSelectStudent }) {
   React.useEffect(() => {
     if (isOpen && inputRef.current) {
       inputRef.current.focus();
+      // Prefill with current search when opening
+      setQuery(currentSearch);
     }
-  }, [isOpen]);
+  }, [isOpen, currentSearch]);
 
   const filteredStudents = React.useMemo(() => {
     if (!query.trim()) return students.slice(0, 8);
@@ -96,8 +98,16 @@ export function CommandKSearch({ isOpen, onClose, students, onSelectStudent }) {
               className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-base"
             />
             <button
-              onClick={onClose}
+              onClick={() => {
+                if (query) {
+                  setQuery('');
+                  if (onClearSearch) onClearSearch();
+                } else {
+                  onClose();
+                }
+              }}
               className="text-muted-foreground hover:text-foreground p-1 rounded-md hover:bg-muted transition-colors shrink-0"
+              title={query ? 'Clear search' : 'Close'}
             >
               <X className="w-4 h-4" />
             </button>
@@ -135,7 +145,7 @@ export function CommandKSearch({ isOpen, onClose, students, onSelectStudent }) {
                         index === selectedIndex ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                       }`}
                     >
-                      {Object.keys(student.subjects || {}).length} subjects
+                      8 subjects
                     </Badge>
                   </button>
                 ))}
