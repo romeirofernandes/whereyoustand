@@ -96,7 +96,7 @@ export function Dashboard({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <CommandKSearch
         isOpen={isCommandKOpen}
         onClose={() => setIsCommandKOpen(false)}
@@ -118,7 +118,7 @@ export function Dashboard({
         allSubjects={allSubjects}
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-4 sm:py-0 space-y-4 sm:space-y-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-4 sm:py-0 space-y-4 sm:space-y-8 flex-1 w-full">
         {/* Page info */}
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           {isFetching && !isLoading && (
