@@ -158,79 +158,120 @@ function unauthorizedResponse() {
   return jsonResponse({ error: 'Unauthorized' }, 401);
 }
 
+function extractCookies(response) {
+  // Use getSetCookie() if available (modern runtimes / CF Workers)
+  if (typeof response.headers.getSetCookie === 'function') {
+    const cookies = response.headers.getSetCookie();
+    if (cookies.length > 0) {
+      return cookies.map(c => c.split(';')[0].trim()).join('; ');
+    }
+    return '';
+  }
+  // Fallback: get('set-cookie') merges with commas which breaks cookies with dates
+  const raw = response.headers.get('set-cookie');
+  if (!raw) return '';
+  return raw.split(',').map(c => c.split(';')[0].trim()).join('; ');
+}
+
 async function loginAndScrapeMarks(prn, dobDay, dobMonth, dobYear) {
   try {
+    // 1) GET login page
     const getResp = await fetch(LOGIN_URL, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36',
+        'Referer': LOGIN_URL,
       },
     });
 
     if (!getResp.ok) {
-      console.error(`Failed to fetch login page for ${prn}`);
+      console.error(`Failed to fetch login page for ${prn}`, getResp.status);
       return null;
     }
 
     const loginPageHtml = await getResp.text();
     const $login = cheerio.load(loginPageHtml);
 
+    const loginForm = $login('form#login-form');
+    if (!loginForm || loginForm.length === 0) {
+      console.error('Could not find login form with id=login-form');
+      return null;
+    }
+
+    // Extract form action URL (may differ from LOGIN_URL)
+    const formAction = loginForm.attr('action');
+    const actualPostUrl = formAction
+      ? new URL(formAction, LOGIN_URL).toString()
+      : LOGIN_URL;
+
     const dayStr = String(dobDay).padStart(2, '0') + ' ';
     const monthStr = String(dobMonth).padStart(2, '0');
     const yearStr = String(dobYear);
     const passwordString = `${yearStr}-${monthStr}-${dayStr.trim()}`;
 
+    // Build form body: credentials first, then hidden fields
     const formData = new URLSearchParams();
     formData.append('username', prn);
     formData.append('dd', dayStr);
     formData.append('mm', monthStr);
     formData.append('yyyy', yearStr);
-    formData.append('passwd', passwordString);
 
-    $login('form#login-form input[type="hidden"]').each((_, el) => {
+    // Add hidden inputs in order, including duplicates
+    loginForm.find('input[type="hidden"]').each((_, el) => {
       const name = $login(el).attr('name');
       const value = $login(el).attr('value') || '';
-      if (name && name !== 'passwd') {
-        formData.append(name, value);
+      if (name) {
+        if (name === 'passwd') {
+          formData.append(name, passwordString);
+        } else {
+          formData.append(name, value);
+        }
       }
     });
 
-    const cookies = getResp.headers.get('set-cookie');
-    let cookieHeader = '';
-    if (cookies) {
-      cookieHeader = cookies.split(',').map(c => c.split(';')[0].trim()).join('; ');
-    }
+    let cookieHeader = extractCookies(getResp);
 
-    const postResp = await fetch(LOGIN_URL, {
+    // 2) POST login
+    const postResp = await fetch(actualPostUrl, {
       method: 'POST',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36',
+        'Referer': LOGIN_URL,
+        'Origin': new URL(LOGIN_URL).origin,
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': cookieHeader,
+        ...(cookieHeader ? { 'Cookie': cookieHeader } : {}),
       },
       body: formData.toString(),
       redirect: 'manual',
     });
 
+    // 3) Follow redirect
     let welcomeHtml;
     if (postResp.status === 303 || postResp.status === 302) {
       const redirectUrl = postResp.headers.get('location');
-      const newCookies = postResp.headers.get('set-cookie');
+
+      // Update cookies from POST response
+      const newCookies = extractCookies(postResp);
       if (newCookies) {
-        cookieHeader = newCookies.split(',').map(c => c.split(';')[0].trim()).join('; ');
+        cookieHeader = newCookies;
       }
 
       if (redirectUrl) {
         const fullUrl = new URL(redirectUrl, LOGIN_URL).toString();
         const redirectResp = await fetch(fullUrl, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Cookie': cookieHeader,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36',
+            'Referer': LOGIN_URL,
+            ...(cookieHeader ? { 'Cookie': cookieHeader } : {}),
           },
         });
         welcomeHtml = await redirectResp.text();
       } else {
+        console.error('No location header in redirect response');
         return null;
       }
+    } else if (!postResp.ok) {
+      console.error('Login POST failed', postResp.status);
+      return null;
     } else {
       welcomeHtml = await postResp.text();
     }
@@ -246,29 +287,60 @@ function extractMarksFromPage(html) {
   const $ = cheerio.load(html);
   const scripts = $('script');
   
+  console.log(`Found ${scripts.length} script tags`);
+  
   let cieData = {};
+  let found = false;
   
   scripts.each((_, el) => {
+    if (found) return;
     const scriptContent = $(el).text().trim();
     
-    if (!scriptContent.includes('stackedBarChart_1') || !scriptContent.includes('type: "bar"')) {
+    if (
+      !scriptContent.includes('stackedBarChart_1') ||
+      !scriptContent.includes('type: "bar"') ||
+      !scriptContent.includes('categories:')
+    ) {
       return;
     }
 
-    const categoriesMatch = scriptContent.match(/categories\s*:\s*(\[[\s\S]*?\])/);
-    if (!categoriesMatch) return;
+    console.log('Found chart script!');
+
+    // Extract bb.generate({ ... bindto: "#stackedBarChart_1" ... });
+    const chartConfigMatch = scriptContent.match(
+      /bb\.generate\s*\(\s*(\{[\s\S]*?bindto\s*:\s*['"]#stackedBarChart_1['"][\s\S]*?\})\s*\)\s*;/
+    );
+    if (!chartConfigMatch) {
+      console.log('bb.generate config not found, trying fallback...');
+      // Fallback: try original approach
+    }
+
+    const chartConfigStr = chartConfigMatch ? chartConfigMatch[1] : scriptContent;
+
+    const categoriesMatch = chartConfigStr.match(/categories\s*:\s*(\[[\s\S]*?\])/);
+    if (!categoriesMatch) {
+      console.log('Categories not found');
+      return;
+    }
 
     const subjects = Array.from(
       categoriesMatch[1].matchAll(/['"]([^'"]+)['"]/g),
       m => m[1]
     );
+    console.log(`Found ${subjects.length} subjects:`, subjects);
 
-    const columnsMatch = scriptContent.match(/columns\s*:\s*(\[[\s\S]*?\])\s*,\s*type\s*:\s*["']bar["']/);
-    if (!columnsMatch) return;
+    if (!subjects.length) return;
+
+    const columnsMatch = chartConfigStr.match(/columns\s*:\s*(\[[\s\S]*?\])\s*,\s*type\s*:\s*["']bar["']/);
+    if (!columnsMatch) {
+      console.log('Columns not found');
+      return;
+    }
 
     const seriesMatches = Array.from(
       columnsMatch[1].matchAll(/\[\s*['"]([^'"]+)['"]\s*([^\]]*)\]/g)
     );
+    console.log(`Found ${seriesMatches.length} exam series`);
 
     for (const series of seriesMatches) {
       const examType = series[1];
@@ -296,8 +368,23 @@ function extractMarksFromPage(html) {
         cieData[subjectName][examType] = idx < parsedMarks.length ? parsedMarks[idx] : null;
       });
     }
+
+    found = true;
   });
 
+  if (!found) {
+    console.log('Chart script not found. Page title:', $('title').text());
+    // Check if login form is still on the page (meaning login failed)
+    if ($('form#login-form').length > 0) {
+      console.log('LOGIN FAILED - login form still present on page');
+    } else {
+      console.log('Login seems OK but no chart data found');
+      console.log('Page contains gaugeTypeMulti:', html.includes('gaugeTypeMulti'));
+      console.log('Page contains stackedBarChart:', html.includes('stackedBarChart'));
+    }
+  }
+
+  console.log(`Extracted ${Object.keys(cieData).length} subjects total`);
   return Object.keys(cieData).length > 0 ? cieData : null;
 }
 
