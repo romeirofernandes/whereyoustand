@@ -37,6 +37,11 @@ export function Dashboard({
     setPage(1);
   }, [debouncedSearch, sortBy]);
 
+  // Scroll to top smoothly when page changes
+  React.useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [page]);
+
   // Paginated marks (server-side sort + search + pagination)
   const {
     students: pageStudents,
