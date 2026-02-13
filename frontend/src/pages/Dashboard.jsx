@@ -40,6 +40,7 @@ export function Dashboard({
 
   // Scroll to top smoothly when page changes
   React.useEffect(() => {
+    // Skip scroll on initial mount
     if (isInitialMount.current) {
       isInitialMount.current = false;
       return;
