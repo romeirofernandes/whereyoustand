@@ -262,35 +262,26 @@ function extractMarksFromPage(html) {
 
 async function updateMarks(db, prn, marksData) {
   try {
-    let anyChange = false;
     const now = new Date().toISOString();
+    
+    await db.prepare(
+      'UPDATE students SET updated_at = ? WHERE prn = ?'
+    ).bind(now, prn).run();
 
     for (const [subject, exams] of Object.entries(marksData)) {
       for (const [examType, marks] of Object.entries(exams)) {
         if (marks !== null) {
-          const { results } = await db.prepare(
-            'SELECT marks FROM marks WHERE prn = ? AND subject = ? AND exam_type = ?'
-          ).bind(prn, subject, examType).all();
+          const updateResult = await db.prepare(
+            'UPDATE marks SET marks = ? WHERE prn = ? AND subject = ? AND exam_type = ?'
+          ).bind(marks, prn, subject, examType).run();
 
-          if (results.length === 0) {
+          if (updateResult.meta.changes === 0) {
             await db.prepare(
               'INSERT INTO marks (prn, subject, exam_type, marks) VALUES (?, ?, ?, ?)'
             ).bind(prn, subject, examType, marks).run();
-            anyChange = true;
-          } else if (results[0].marks !== marks) {
-            await db.prepare(
-              'UPDATE marks SET marks = ? WHERE prn = ? AND subject = ? AND exam_type = ?'
-            ).bind(marks, prn, subject, examType).run();
-            anyChange = true;
           }
         }
       }
-    }
-
-    if (anyChange) {
-      await db.prepare(
-        'UPDATE students SET updated_at = ? WHERE prn = ?'
-      ).bind(now, prn).run();
     }
 
     return true;
