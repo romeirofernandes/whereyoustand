@@ -54,6 +54,47 @@ function getSubjectName(code) {
   return SUBJECT_MAP[code] || code;
 }
 
+// Pointer calculation (mirrored from frontend for server-side sorting)
+const POINTER_CATEGORIES = {
+  category1: ['DLRL', 'HMI', 'Operating Systems', 'Data Warehousing and Mining', 'TCSCC', 'Computer Network'],
+  category2: ['IPDL', 'NLP', 'OSINT'],
+  category3: ['ESI', 'HWP', 'SCM', 'IoT', '3D Printing', 'E-Vehicle'],
+};
+
+const CATEGORY_MULTIPLIERS = { category1: 3, category2: 1, category3: 2 };
+const CATEGORY_TOTALS = { category1: 150, category2: 50, category3: 100 };
+
+function getPointerFromPercentage(pct) {
+  if (pct >= 85) return 10;
+  if (pct >= 80) return 9;
+  if (pct >= 70) return 8;
+  if (pct >= 60) return 7;
+  if (pct >= 50) return 6;
+  if (pct >= 45) return 5;
+  if (pct >= 40) return 4;
+  return 0;
+}
+
+function getSubjectCategory(subject) {
+  if (POINTER_CATEGORIES.category1.includes(subject)) return 'category1';
+  if (POINTER_CATEGORIES.category2.includes(subject)) return 'category2';
+  if (POINTER_CATEGORIES.category3.includes(subject)) return 'category3';
+  return null;
+}
+
+function calculateOverallPointerServer(subjects) {
+  let totalWeighted = 0;
+  for (const [subject, exams] of Object.entries(subjects)) {
+    const cat = getSubjectCategory(subject);
+    if (!cat) continue;
+    const total = Object.values(exams).reduce((s, m) => s + (typeof m === 'number' ? m : 0), 0);
+    const rounded = Math.round(total);
+    const pct = (rounded / CATEGORY_TOTALS[cat]) * 100;
+    totalWeighted += getPointerFromPercentage(pct) * CATEGORY_MULTIPLIERS[cat];
+  }
+  return totalWeighted / 20;
+}
+
 // Auth helper - verify token
 function verifyToken(request, env) {
   const authHeader = request.headers.get('Authorization');
@@ -264,31 +305,108 @@ async function updateMarks(db, prn, marksData) {
   try {
     const now = new Date().toISOString();
     
-    await db.prepare(
-      'UPDATE students SET updated_at = ? WHERE prn = ?'
-    ).bind(now, prn).run();
+    const statements = [
+      db.prepare('UPDATE students SET updated_at = ? WHERE prn = ?').bind(now, prn)
+    ];
 
     for (const [subject, exams] of Object.entries(marksData)) {
       for (const [examType, marks] of Object.entries(exams)) {
         if (marks !== null) {
-          const updateResult = await db.prepare(
-            'UPDATE marks SET marks = ? WHERE prn = ? AND subject = ? AND exam_type = ?'
-          ).bind(marks, prn, subject, examType).run();
-
-          if (updateResult.meta.changes === 0) {
-            await db.prepare(
-              'INSERT INTO marks (prn, subject, exam_type, marks) VALUES (?, ?, ?, ?)'
-            ).bind(prn, subject, examType, marks).run();
-          }
+          statements.push(
+            db.prepare(
+              `INSERT INTO marks (prn, subject, exam_type, marks) VALUES (?, ?, ?, ?)
+               ON CONFLICT(prn, subject, exam_type) DO UPDATE SET marks = excluded.marks`
+            ).bind(prn, subject, examType, marks)
+          );
         }
       }
     }
 
+    await db.batch(statements);
     return true;
   } catch (error) {
     console.error(`Database error for ${prn}:`, error);
     return false;
   }
+}
+
+async function handlePaginatedMarks(env, authLevel, url) {
+  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
+  const pageSize = Math.min(50, Math.max(1, parseInt(url.searchParams.get('pageSize') || '20')));
+  const sortBy = url.searchParams.get('sortBy') || 'none';
+  const search = (url.searchParams.get('search') || '').trim();
+
+  const hiddenPRNs = authLevel === 'normal' ? [] : [];
+
+  // Fetch students and marks (two parallel queries)
+  const [studentsRes, marksRes] = hiddenPRNs.length > 0
+    ? await Promise.all([
+        env.DB.prepare(
+          `SELECT prn, name, updated_at FROM students WHERE prn NOT IN (${hiddenPRNs.map(() => '?').join(',')}) ORDER BY name`
+        ).bind(...hiddenPRNs).all(),
+        env.DB.prepare(
+          `SELECT prn, subject, exam_type, marks FROM marks WHERE prn NOT IN (${hiddenPRNs.map(() => '?').join(',')})`
+        ).bind(...hiddenPRNs).all(),
+      ])
+    : await Promise.all([
+        env.DB.prepare('SELECT prn, name, updated_at FROM students ORDER BY name').all(),
+        env.DB.prepare('SELECT prn, subject, exam_type, marks FROM marks').all(),
+      ]);
+
+  // Group marks by student → subject → exam
+  const marksMap = {};
+  for (const m of marksRes.results) {
+    if (!marksMap[m.prn]) marksMap[m.prn] = {};
+    if (!marksMap[m.prn][m.subject]) marksMap[m.prn][m.subject] = {};
+    marksMap[m.prn][m.subject][m.exam_type] = m.marks;
+  }
+
+  let students = studentsRes.results.map((s) => ({
+    prn: s.prn,
+    name: s.name,
+    updated_at: s.updated_at,
+    subjects: marksMap[s.prn] || {},
+  }));
+
+  // Search filter
+  if (search) {
+    const q = search.toLowerCase();
+    students = students.filter(
+      (s) => s.name.toLowerCase().includes(q) || s.prn.toLowerCase().includes(q)
+    );
+  }
+
+  // Sort
+  if (sortBy === 'highest' || sortBy === 'lowest') {
+    students.sort((a, b) => {
+      const sum = (s) =>
+        Object.values(s.subjects).reduce(
+          (t, exams) => t + Object.values(exams).reduce((s2, m) => s2 + (typeof m === 'number' ? m : 0), 0),
+          0
+        );
+      return sortBy === 'highest' ? sum(b) - sum(a) : sum(a) - sum(b);
+    });
+  } else if (sortBy === 'pointer') {
+    students.forEach((s) => {
+      s._p = calculateOverallPointerServer(s.subjects);
+    });
+    students.sort((a, b) => b._p - a._p);
+    students.forEach((s) => delete s._p);
+  } else if (sortBy.startsWith('subject:')) {
+    const subj = sortBy.slice('subject:'.length);
+    students = students.filter((s) => s.subjects[subj]);
+    students.sort((a, b) => {
+      const tot = (s) =>
+        Object.values(s.subjects[subj] || {}).reduce((sum, m) => sum + (typeof m === 'number' ? m : 0), 0);
+      return tot(b) - tot(a);
+    });
+  }
+
+  const total = students.length;
+  const totalPages = Math.ceil(total / pageSize) || 1;
+  const pageStudents = students.slice((page - 1) * pageSize, page * pageSize);
+
+  return { students: pageStudents, total, page, pageSize, totalPages };
 }
 
 async function scrapeOneStudent(env, offset = 0) {
@@ -433,6 +551,27 @@ export default {
           console.error('Encryption failed for /api/students:', err);
           return jsonResponse({ error: 'Encryption failed' }, 500);
         }
+      }
+
+      if (url.pathname === '/api/marks/paginated' && request.method === 'GET') {
+        const authLevel = verifyToken(request, env);
+        if (!authLevel) {
+          return unauthorizedResponse();
+        }
+
+        try {
+          const result = await handlePaginatedMarks(env, authLevel, url);
+          const encrypted = await encryptPayload(result, env.ENCRYPTION_KEY);
+          return jsonResponse({ encrypted: true, payload: encrypted });
+        } catch (err) {
+          console.error('Paginated marks error:', err);
+          return jsonResponse({ error: 'Failed to fetch paginated marks' }, 500);
+        }
+      }
+
+      if (url.pathname === '/api/scrape/count' && request.method === 'GET') {
+        const { results } = await env.DB.prepare('SELECT COUNT(*) as count FROM students').all();
+        return jsonResponse({ count: results[0].count });
       }
 
       if (url.pathname === '/api/scrape/one' && request.method === 'POST') {

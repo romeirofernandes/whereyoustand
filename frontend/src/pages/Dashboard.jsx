@@ -1,31 +1,67 @@
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardHeader } from '../components/DashboardHeader';
 import { SimpleAccordion } from '../components/SimpleAccordion';
 import { StudentCard } from '../components/StudentCard';
 import { CommandKSearch } from '../components/CommandKSearch';
-import { calculateOverallPointer } from '../utils/pointerCalculations';
 import { SiteFooter } from '@/components/SiteFooter';
+import { usePaginatedMarks, useStudentList } from '../hooks/usePaginatedMarks';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export function Dashboard({ 
-  studentsWithMarks, 
   searchQuery, 
   setSearchQuery, 
   sortBy, 
   setSortBy, 
-  onCompareClick 
+  onCompareClick,
+  isAuthenticated,
+  setIsAuthenticated,
 }) {
   const [openedStudentPrn, setOpenedStudentPrn] = React.useState(null);
   const [isCommandKOpen, setIsCommandKOpen] = React.useState(false);
+  const [page, setPage] = React.useState(1);
+  const pageSize = 20;
 
-  // Get all unique subjects
+  // Debounce search so we don't call the API on every keystroke
+  const [debouncedSearch, setDebouncedSearch] = React.useState(searchQuery);
+  React.useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Reset to page 1 when search or sort changes
+  React.useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, sortBy]);
+
+  // Paginated marks (server-side sort + search + pagination)
+  const {
+    students: pageStudents,
+    total,
+    totalPages,
+    isLoading,
+    isFetching,
+  } = usePaginatedMarks(isAuthenticated, setIsAuthenticated, {
+    page,
+    pageSize,
+    sortBy,
+    search: debouncedSearch,
+  });
+
+  // Lightweight student list for Command-K search
+  const { students: allStudentNames } = useStudentList(isAuthenticated, setIsAuthenticated);
+
+  // Get all unique subjects from the current page (for subject sort dropdown)
   const allSubjects = React.useMemo(() => {
+    // Use the full student list subjects if available from any page
     const subjects = new Set();
-    studentsWithMarks.forEach(student => {
+    pageStudents.forEach(student => {
       Object.keys(student.subjects || {}).forEach(subject => subjects.add(subject));
     });
     return Array.from(subjects).sort();
-  }, [studentsWithMarks]);
+  }, [pageStudents]);
 
   React.useEffect(() => {
     const down = (e) => {
@@ -41,85 +77,30 @@ export function Dashboard({
     return () => document.removeEventListener('keydown', down);
   }, []);
 
-  const filteredStudentsWithMarks = React.useMemo(() => {
-    let filtered = studentsWithMarks;
-    
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (student) =>
-          student.name.toLowerCase().includes(query) ||
-          student.prn.toLowerCase().includes(query)
-      );
-    }
-    
-    // Apply sort
-    if (sortBy !== 'none') {
-      if (sortBy === 'highest' || sortBy === 'lowest') {
-        filtered = [...filtered].sort((a, b) => {
-          const getTotalMarks = (student) => {
-            return Object.values(student.subjects || {}).reduce((total, exams) => {
-              return total + Object.values(exams).reduce(
-                (sum, mark) => sum + (typeof mark === 'number' ? mark : 0),
-                0
-              );
-            }, 0);
-          };
-          
-          const aTotal = getTotalMarks(a);
-          const bTotal = getTotalMarks(b);
-          
-          return sortBy === 'highest' ? bTotal - aTotal : aTotal - bTotal;
-        });
-      } else if (sortBy === 'pointer') {
-        // Sort by overall pointer
-        filtered = [...filtered].sort((a, b) => {
-          const aPointer = parseFloat(calculateOverallPointer(a.subjects));
-          const bPointer = parseFloat(calculateOverallPointer(b.subjects));
-          return bPointer - aPointer; // Highest pointer first
-        });
-      } else if (sortBy.startsWith('subject:')) {
-        const subject = sortBy.replace('subject:', '');
-        // Filter students who have this subject
-        filtered = filtered.filter(student => student.subjects[subject]);
-        // Sort by marks in this subject
-        filtered = [...filtered].sort((a, b) => {
-          const getTotalMarksForSubject = (student) => {
-            return Object.values(student.subjects[subject] || {}).reduce(
-              (sum, mark) => sum + (typeof mark === 'number' ? mark : 0),
-              0
-            );
-          };
-          
-          const aTotal = getTotalMarksForSubject(a);
-          const bTotal = getTotalMarksForSubject(b);
-          
-          return bTotal - aTotal; // Highest first
-        });
-      }
-    }
-    
-    return filtered;
-  }, [studentsWithMarks, searchQuery, sortBy]);
-
   const handleSelectStudent = (student) => {
+    // Set search to student's name so the paginated API returns them
+    setSearchQuery(student.name);
+    setPage(1);
     setOpenedStudentPrn(student.prn);
-    // Small delay to ensure the accordion has time to open
-    setTimeout(() => {
-      const element = document.getElementById(student.prn);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }, 150);
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background p-4 sm:p-8">
+        <div className="max-w-7xl mx-auto space-y-4 sm:space-y-8">
+          <Skeleton className="h-10 sm:h-12 w-48 sm:w-64" />
+          <Skeleton className="h-64 sm:h-96 w-full" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
       <CommandKSearch
         isOpen={isCommandKOpen}
         onClose={() => setIsCommandKOpen(false)}
-        students={studentsWithMarks}
+        students={allStudentNames}
         onSelectStudent={handleSelectStudent}
       />
 
@@ -130,7 +111,6 @@ export function Dashboard({
         onSortChange={setSortBy}
         onCompareClick={onCompareClick}
         onSearchClick={() => {
-          // Only open command K modal on desktop
           if (window.innerWidth >= 640) {
             setIsCommandKOpen(true);
           }
@@ -138,13 +118,20 @@ export function Dashboard({
         allSubjects={allSubjects}
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-4 sm:py-8 space-y-4 sm:space-y-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-4 sm:py-0 space-y-4 sm:space-y-8">
+        {/* Page info */}
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          {isFetching && !isLoading && (
+            <span className="text-xs animate-pulse">Updating…</span>
+          )}
+        </div>
+
         <SimpleAccordion>
-          {filteredStudentsWithMarks.map((student, index) => (
+          {pageStudents.map((student, index) => (
             <StudentCard
               key={student.prn}
               student={student}
-              index={index}
+              index={(page - 1) * pageSize + index}
               sortBy={sortBy}
               isOpen={openedStudentPrn === student.prn}
               onOpen={() => setOpenedStudentPrn(student.prn)}
@@ -152,12 +139,76 @@ export function Dashboard({
           ))}
         </SimpleAccordion>
 
-        {filteredStudentsWithMarks.length === 0 && searchQuery && (
+        {pageStudents.length === 0 && debouncedSearch && (
           <Card className="text-center py-8">
             <CardContent>
-              <p className="text-muted-foreground">No students found matching "{searchQuery}"</p>
+              <p className="text-muted-foreground">No students found matching "{debouncedSearch}"</p>
             </CardContent>
           </Card>
+        )}
+
+        {/* Pagination controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 pt-2 pb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Previous
+            </Button>
+
+            {/* Page numbers */}
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => {
+                  // Show first, last, current, and neighbors
+                  if (p === 1 || p === totalPages) return true;
+                  if (Math.abs(p - page) <= 1) return true;
+                  return false;
+                })
+                .reduce((acc, p, idx, arr) => {
+                  // Insert ellipsis between gaps
+                  if (idx > 0 && p - arr[idx - 1] > 1) {
+                    acc.push('...' + p);
+                  }
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((item) => {
+                  if (typeof item === 'string') {
+                    return (
+                      <span key={item} className="px-1 text-muted-foreground text-sm">
+                        …
+                      </span>
+                    );
+                  }
+                  return (
+                    <Button
+                      key={item}
+                      variant={item === page ? 'default' : 'outline'}
+                      size="sm"
+                      className="w-8 h-8 p-0"
+                      onClick={() => setPage(item)}
+                    >
+                      {item}
+                    </Button>
+                  );
+                })}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </div>
         )}
       </main>
       <SiteFooter />

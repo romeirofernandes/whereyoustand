@@ -37,7 +37,11 @@ jobs:
       - name: Scrape all students
         if: ${{ steps.check_night.outputs.skip != 'true' }}
         run: |
-          for i in {0..138}; do
+          # Dynamically get total student count instead of hardcoding
+          TOTAL=$(curl -s "https://whereyoustand-worker.theromeirofernandes.workers.dev/api/scrape/count" | jq -r '.count // 139')
+          echo "Total students: $TOTAL"
+          LAST=$((TOTAL - 1))
+          for i in $(seq 0 $LAST); do
             echo "Scraping offset $i"
             resp=$(curl -s -X POST "https://whereyoustand-worker.theromeirofernandes.workers.dev/api/scrape/one?offset=$i")
             prn=$(echo "$resp" | jq -r '.prn // empty')

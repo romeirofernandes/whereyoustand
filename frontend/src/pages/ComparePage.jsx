@@ -3,9 +3,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 import { ArrowLeft, Users, X } from 'lucide-react';
 import { CustomTooltip } from '../components/CustomTooltip';
+import { useStudentData } from '../hooks/useStudentData';
 
 const STUDENT_COLORS = [
   'var(--color-chart-1)',
@@ -30,7 +32,8 @@ function getElectiveGroup(subject) {
   return null;
 }
 
-export function ComparePage({ students, onBack }) {
+export function ComparePage({ onBack, isAuthenticated, setIsAuthenticated }) {
+  const { studentsWithMarks: students, isLoading } = useStudentData(isAuthenticated, setIsAuthenticated);
   const [selectedStudents, setSelectedStudents] = React.useState([]);
   const [searchQuery, setSearchQuery] = React.useState('');
 
@@ -233,7 +236,18 @@ export function ComparePage({ students, onBack }) {
             <CardDescription>Choose students to compare their marks</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Input
+            {isLoading ? (
+              <div className="space-y-3">
+                <Skeleton className="h-10 w-full" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <Skeleton key={i} className="h-16 w-full" />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                <Input
               type="text"
               placeholder="Search students..."
               value={searchQuery}
@@ -263,6 +277,8 @@ export function ComparePage({ students, onBack }) {
                 );
               })}
             </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
