@@ -2,7 +2,7 @@ import React from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { getAuthToken, removeCookie } from './useAuth';
 
-const API_URL = 'http://localhost:8787/api';
+const API_URL = 'https://whereyoustand-worker.theromeirofernandes.workers.dev/api';
 
 function base64ToUint8Array(b64) {
   const binary = atob(b64);
