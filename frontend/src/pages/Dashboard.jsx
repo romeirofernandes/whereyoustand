@@ -24,6 +24,7 @@ export function Dashboard({
   const [page, setPage] = React.useState(1);
   const pageSize = 20;
   const studentRefs = React.useRef({});
+  const isInitialMount = React.useRef(true);
 
   // Debounce search so we don't call the API on every keystroke
   const [debouncedSearch, setDebouncedSearch] = React.useState(searchQuery);
@@ -36,6 +37,16 @@ export function Dashboard({
   React.useEffect(() => {
     setPage(1);
   }, [debouncedSearch, sortBy]);
+
+  // Scroll to top smoothly when page changes
+  React.useEffect(() => {
+    // Skip scroll on initial mount
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [page]);
 
   // Paginated marks (server-side sort + search + pagination)
   const {
